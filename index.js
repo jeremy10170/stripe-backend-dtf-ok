@@ -1,28 +1,34 @@
+// index.js
+
 const express = require("express");
 const Stripe = require("stripe");
 const cors = require("cors");
-
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 app.post("/create-checkout-session", async (req, res) => {
-  const { quantity, format } = req.body;
-
-  const prices = {
-    A6: 250,
-    A5: 400,
-    A4: 600,
-    A3: 1000,
-  };
-
-  const shipping = 650;
-  const unitPrice = prices[format] || prices["A4"];
-  const total = unitPrice * quantity + shipping;
-
   try {
+    const { quantity, format, shipping } = req.body;
+
+    // Tarifs en centimes
+    const prices = {
+      A6: 250,   // 2,50 €
+      A5: 400,   // 4,00 €
+      A4: 600,   // 6,00 €
+      A3: 1000,  // 10,00 €
+    };
+
+    const unitPrice = prices[format] || prices.A4;
+    // shipping est reçu en euros (0 ou 6.5)
+    const shippingCents = Math.round((parseFloat(shipping) || 0) * 100);
+
+    // montant total en centimes
+    const totalAmount = unitPrice * quantity + shippingCents;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -32,26 +38,23 @@ app.post("/create-checkout-session", async (req, res) => {
             product_data: {
               name: `Planche DTF ${format}`,
             },
-            unit_amount: total,
+            unit_amount: totalAmount,
           },
           quantity: 1,
         },
       ],
       mode: "payment",
-      success_url: "https://sublims-dtf.com/merci.html",
+      success_url: "https://sublims-dtf.com/",
       cancel_url: "https://sublims-dtf.com/",
     });
 
     res.json({ url: session.url });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erreur lors de la création de la session Stripe" });
+    console.error("Stripe session error:", err);
+    res.status(500).json({ error: "Échec création session Stripe" });
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("Backend Stripe en ligne.");
-});
-
+app.get("/", (_req, res) => res.send("Stripe backend is up!"));
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Serveur Stripe lancé sur le port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
